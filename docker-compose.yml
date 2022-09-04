@@ -1,0 +1,88 @@
+version: '3.6'
+services:
+  telegraf:
+    image: telegraf:1.18-alpine
+    container_name: tig_telegraf
+    hostname: tig_telegraf
+    volumes:
+      - ./telegraf/etc/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      - influxdb
+    links:
+      - influxdb
+
+  influxdb:
+    image: influxdb:1.8-alpine
+    env_file: configuration.env
+    container_name: tig_influxdb
+    ports:
+      - '127.0.0.1:8086:8086'
+    volumes:
+      - ./:/imports
+      - influxdb_data:/var/lib/influxdb
+
+  grafana:
+    image: grafana/grafana:8.0.2
+    depends_on:
+      - influxdb
+    env_file: configuration.env
+    container_name: tig_grafana
+    links:
+      - influxdb
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+
+  mongodb:
+    image: mongo:5.0
+    env_file: configuration.env
+    container_name: tig_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo:/data/db
+
+  elasticsearch:
+    image: elasticsearch:8.4.1
+    container_name: tig_elasticsearch
+    volumes:
+      - ./elasticsearch:/usr/share/elasticsearch/data
+    environment:
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+
+  web_server:
+    build:
+      context: .
+      dockerfile: ./python_image/Dockerfile
+    command: python /backend/main.py
+    container_name: tig_web_app
+    depends_on:
+      - mongodb
+    links:
+      - mongodb
+    volumes:
+      - ./web_app:/backend
+    ports:
+      - '127.0.0.1:8080:8080'
+      - '127.0.0.1:8125:8125/udp'
+
+  nginx:
+    image: nginx:latest
+    container_name: tig_nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - web_server
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+
+
+volumes:
+  grafana_data: {}
+  influxdb_data: {}
